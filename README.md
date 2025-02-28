@@ -1,67 +1,80 @@
 # RDI Quickstart Oracle
 
-Docker image for testing RDI with Oracle 19c.
+Docker configuration for testing RDI with Oracle 19c.
 
 ## Building the Image
 
-- Clone the repo locally and cd into directory `rdi-quickstart-oracle`
-- ```bash
-  docker build -t sqlserver sqlserver-image
-  ```
+The method for building the Oracle 19c Docker image is described [here](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance)
 
 ## Running a Container
 
 - Copy file `env.oracle` to `.env`
 - Adjust the passwords to your requirements
-- Change permissions on directories:
+- Set user and password for the Oracle LogMiner user script:
   ```bash
-  chmod 777 oradata
+  source ./.env
+  sed -e "s/<DBZUSER>/$DBZUSER/g" \
+      -e "s/<DBZUSER_PASSWORD>/$DBZUSER_PASSWORD/g" templates/04-Logminer_User.template > sql/04-Logminer_User.sql
+- Create the container:
+  ```bash
+  docker run --name ora19c --env-file .env -v $PWD/oradata:/opt/oracle/oradata -v $PWD/sql:/docker-entrypoint-initdb.d/setup -p 1521:1521 -p 5500:5500 -d oracle/database:19.3.0-ee
   ```
-- ```bash
-  docker run --name ora19c --env-file .env -v $PWD/oradata:/opt/oracle/oradata -p 1521:1521 -d sqlserver
+- Check the status:
+  ```bash
+  docker logs ora19c --follow
+  ```
+  The first time you start the database, it will take 10 to 15 minutes for Oracle to be available. This is indicated by the following log output:
+  ```
+  #########################
+  DATABASE IS READY TO USE!
+  #########################
   ```
 
 ## Connecting to the Chinook Database
 
 Use a standard database client, such as DBeaver:
 
-<img width="726" alt="image" src="https://github.com/user-attachments/assets/5f06a827-8a75-4d01-870d-39f814dc3c8d" />
+<img width="696" alt="image" src="https://github.com/user-attachments/assets/c2a37838-6e5a-4a87-8b95-fcc3f1823944" />
 
 - Host = `localhost` (or the FQDN of your machine)
-- Port = `1433`
-- Database = `Chinook`
-- Username = `sa`
-- Password = <value of `MSSQL_SA_PASSWORD` in file `.env`>
+- Port = `1521`
+- Database = `ORCLPDB1`
+- Username = `chinook`
+- Password = `chinook`
 
-You should see 11 tables in schema `dbo` of database `Chinook`, as well as 11 corresponding tables in schema `cdc`:
+In tab `Oracle properties` tick box `Show only connected user schema`:
 
-<img width="301" alt="image" src="https://github.com/user-attachments/assets/892594ab-9a31-4b8a-9698-a1476b61c02e" />
+<img width="808" alt="image" src="https://github.com/user-attachments/assets/69f66b4f-f8bf-4926-b2a1-53fd4746dd74" />
 
-You can also use the command line interface `sqlcmd` to execute queries directly in the container, for example:
+You should see 11 tables in schema `CHINOOK`:
+
+<img width="290" alt="image" src="https://github.com/user-attachments/assets/a43af111-7229-47ee-90ff-a9e413441568" />
+
+You can also use the command line interface `sqplus` to execute queries directly in the container, for example:
 
 ```bash
-docker exec -it sqlserver /opt/mssql-tools18/bin/sqlcmd -No -S localhost -U sa -P CompLex#987 -d Chinook -Q "select table_name from information_schema.tables where table_schema='dbo'"
+docker exec -it ora19c sqlplus chinook/chinook@localhost:1521/ORCLPDB1
+SQL> select table_name from user_tables;
 ```
 
 Expected result:
 
 ```
-table_name                                                                                                                      
---------------------------------------------------------------------------------------------------------------------------------
-Album                                                                                                                           
-Artist                                                                                                                          
-Customer                                                                                                                        
-Employee                                                                                                                        
-Genre                                                                                                                           
-Invoice                                                                                                                         
-InvoiceLine                                                                                                                     
-MediaType                                                                                                                       
-Playlist                                                                                                                        
-PlaylistTrack                                                                                                                   
-Track                                                                                                                           
-systranschemas                                                                                                                  
+TABLE_NAME
+--------------------------------------------------------------------------------
+GENRE
+MEDIATYPE
+ARTIST
+ALBUM
+TRACK
+EMPLOYEE
+CUSTOMER
+INVOICE
+INVOICELINE
+PLAYLIST
+PLAYLISTTRACK
 
-(12 rows affected)
+11 rows selected.
 ```
 
 ## Connecting from RDI
@@ -70,17 +83,20 @@ The `source` section in file `config.yaml` needs to look like this:
 
 ```
 sources:
-  mssql:
+  oracle:
     type: cdc
     logging:
       level: info
     connection:
-      type: sqlserver
+      type: oracle
       host: <DB_HOST>
-      port: 1433
-      database: Chinook
+      port: 1521
       user: ${SOURCE_DB_USERNAME}
       password: ${SOURCE_DB_PASSWORD}
+      database: ORCLCDB
+    advanced:
+      source:
+        database.pdb.name: ORCLPDB1
 ```
 
 - <DB_HOST> = <FQDN of your machine (or `localhost` when running locally)\>
@@ -92,5 +108,6 @@ sources:
 Changing the username or password for the Debezium user requires rebuilding the database. Follow these steps:
 
 - Stop and remove the container
-- Delete the contents of directory `data`
+- Delete the contents of directory `oradata`, including the hidden file `.ORCLCDB.created`, but excluding directory `recovery_area`.
+- Delete the contents of directory `oradata/recovery_area`
 - Start the container
