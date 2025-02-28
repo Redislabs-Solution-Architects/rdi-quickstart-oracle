@@ -50,7 +50,7 @@ You should see 11 tables in schema `CHINOOK`:
 
 <img width="290" alt="image" src="https://github.com/user-attachments/assets/a43af111-7229-47ee-90ff-a9e413441568" />
 
-You can also use the command line interface `sqplus` to execute queries directly in the container, for example:
+You can also use the command line interface `sqlplus` to execute queries directly in the container, for example:
 
 ```bash
 docker exec -it ora19c sqlplus chinook/chinook@localhost:1521/ORCLPDB1
